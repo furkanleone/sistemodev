@@ -1,86 +1,100 @@
-
+/*
+ * Soru 1: Dinamik 2D Matris - Yalnizca Isaretti Aritmetigi Kullanarak
+ * Derleme: gcc -o soru1_matris soru1_matris.c
+ * Calistirma: ./soru1_matris
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
 
-// Bu fonksiyon ana ve yan (ikincil) köşegenleri topluyor.
-// Parametre olarak matrisin ilk adresini ve satır/sütun sayısını gönderiyoruz.
+/*
+ * special_sum: N x N matrisin ana kosegen ve ikincil kosegen
+ * elemanlarinin toplamini hesaplar. Yalnizca isaretci aritmetigi kullanir.
+ * Merkez eleman (eger varsa) iki kez sayilmaz.
+ *
+ * Parametreler:
+ *   mat  - Matrisin baslangic adresini gosteren isaretci (1D bellek blogu)
+ *   rows - Matrisin satir sayisi
+ *   cols - Matrisin sutun sayisi
+ *
+ * Donus: Kosegen elemanlarinin toplami (int)
+ */
 int special_sum(int *mat, int rows, int cols) {
     int sum = 0;
     int i;
 
     for (i = 0; i < rows; i++) {
-        // Ana köşegen için elemanlar: (0,0), (1,1), (2,2) vs.
-        // Hoca köşeli parantez kullanmayın dediği için formül: mat + (i * cols) + i
+        /* Ana kosegen elemani: pozisyon (i, i)
+         * Bellekteki karsilik: mat + i * cols + i
+         * mat[i][j] sozdizimi KULLANILMIYOR */
         sum += *(mat + i * cols + i);
 
-        // Yan köşegenin sütun indisini buluyoruz (sondan geriye doğru geliyor)
+        /* Ikincil kosegen elemani: pozisyon (i, cols-1-i)
+         * Bellekteki karsilik: mat + i * cols + (cols - 1 - i) */
         int secondary_col = cols - 1 - i;
-        
-        // Eğer matris boyutu tek sayıysa (mesela 3x3), tam ortadaki elemanı 
-        // hem ana hem yan köşegende iki kere toplamamak için bir kontrol yapmamız lazım.
         if (secondary_col != i) {
+            /* Merkez eleman degil: iki kez saymamak icin kontrol */
             sum += *(mat + i * cols + secondary_col);
         }
+        /* Eger secondary_col == i ise, bu eleman ana koşegen elemanıdır
+         * (merkez eleman), zaten yukarida eklendi, tekrar eklenmez. */
     }
 
     return sum;
 }
 
 int main(void) {
-    int n;          // Matrisin boyutu (NxN olacak)
-    int *mat;       // Matrisi tutacağımız 1 boyutlu pointer
-    int i, j;       // Klasik döngü değişkenleri
-    int result;     // Toplamı tutacağımız değişken
+    int n;          /* Matris boyutu (NxN) */
+    int *mat;       /* Matrisi temsil eden tek boyutlu isaretci */
+    int i, j;       /* Dongu degiskenleri */
+    int result;     /* special_sum sonucu */
 
-    // Kullanıcıdan matrisin boyutunu istiyoruz
+    /* Kullanicidan matris boyutunu al */
     printf("Matris boyutunu girin (N): ");
     if (scanf("%d", &n) != 1 || n <= 0) {
-        fprintf(stderr, "Hatalı boyut girdiniz!\n");
+        fprintf(stderr, "Gecersiz boyut!\n");
         return 1;
     }
 
-    // Matrisi aslında 1 boyutlu dümdüz bir dizi gibi oluşturuyoruz.
-    // N*N tane eleman için malloc ile RAM'den yer istiyoruz.
+    /* malloc ile N*N boyutunda bellek tahsis et (tek 1D blok) */
     mat = (int *)malloc(n * n * sizeof(int));
     if (mat == NULL) {
-        fprintf(stderr, "RAM'de yer ayrılamadı!\n");
+        fprintf(stderr, "Bellek tahsisi basarisiz!\n");
         return 1;
     }
 
-    // Kullanıcıdan elemanları tek tek alıyoruz
-    printf("Matris elemanlarını satır satır girin (%d x %d):\n", n, n);
+    /* Kullanicidan matris elemanlarini oku
+     * Eleman (i,j) bellekte: mat + i*n + j konumundadir */
+    printf("Matris elemanlarini satir satir girin (%d x %d):\n", n, n);
     for (i = 0; i < n; i++) {
         for (j = 0; j < n; j++) {
             printf("mat[%d][%d] = ", i, j);
-            
-            // scanf içine adres yazarken de pointer aritmetiği kullandım.
-            // i*n satırları atlamak için, j ise sütunda ilerlemek için.
+            /* Isaretci aritmetigi ile elemana eris */
             if (scanf("%d", (mat + i * n + j)) != 1) {
-                fprintf(stderr, "Geçersiz bir sayı girdiniz!\n");
-                free(mat); // Hata verip çıkmadan önce çöp bırakmayalım
+                fprintf(stderr, "Gecersiz giris!\n");
+                free(mat);
                 return 1;
             }
         }
     }
 
-    // Girilen matrisi ekrana düzgün bir şekilde yazdırıp kontrol ediyoruz
+    /* Girilen matrisi ekrana yazdir (dogrulama amacli) */
     printf("\nGirilen Matris:\n");
     for (i = 0; i < n; i++) {
         for (j = 0; j < n; j++) {
-            // Değeri okumak için pointer'ın başına * koyup dereference yapıyoruz
+            /* Isaretci aritmetigi ile okuma: *(mat + i*n + j) */
             printf("%5d", *(mat + i * n + j));
         }
         printf("\n");
     }
 
-    // Fonksiyonu çağırıp işlemi yaptırıyoruz
+    /* special_sum fonksiyonunu cagir ve sonucu yazdir */
     result = special_sum(mat, n, n);
-    printf("\nAna + İkincil Köşegen Elemanları Toplamı = %d\n", result);
+    printf("\nAna + Ikincil Kosegen Elemanlari Toplami = %d\n", result);
 
-    // İşimiz bitince belleği işletim sistemine geri veriyoruz (memory leak olmasın diye)
+    /* Tahsis edilen bellek serbest birakiliyor - bellek sizintisi onlenir */
     free(mat);
-    mat = NULL; // Ne olur ne olmaz pointer'ı boşa çıkartalım
+    mat = NULL;
 
     return 0;
 }

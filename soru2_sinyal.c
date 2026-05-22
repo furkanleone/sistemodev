@@ -1,6 +1,3 @@
-// Soru 2: Fork ve Sinyal İşleme (Signal Handling) Ödevi
-// Bu programda ebeveyn ve çocuk süreçlerin sinyallerle haberleşmesini yapıyoruz.
-
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,84 +5,83 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <time.h> // nanosleep() fonksiyonu için şart
+#include <time.h> /* nanosleep() icin eklendi */
 
-// Ebeveyn süreç sinyal gönderirken çocuğun PID'ini bilsin diye global tanımladım
 volatile pid_t child_pid = 0;
-// Kaçıncı alarmda olduğumuzu saymak için sayaç
 volatile int alarm_count = 0;
 
-// ÇOCUK SÜRECİN SİNYAL HANDLER'LARI
+/* Cocuk surec SIGINT aldiginda programi hemen bitirmez;
+ * istenen bilgilendirme mesajini yazdirip calismaya devam eder. */
 void child_sigint_handler(int sig) {
-    (void)sig; // Hoca Makefile'a -Wextra koymuş, "sig kullanılmadı" uyarısını susturmak için.
-    
-    // Sinyal bir kez gelince handler sıfırlanmasın diye kendini tekrar kurduruyorum
+    (void)sig; /* Kullanilmayan parametre uyarisi susturuldu */
     signal(SIGINT, child_sigint_handler); 
     printf("Çocuk: SIGINT alındı ancak devam ediliyor...\n");
-    fflush(stdout); // Terminale anında yazdırsın diye buffer'ı boşaltıyoruz
+    fflush(stdout);
 }
 
+/* Cocuk surec SIGCONT ile devam ettirildiginde bu handler calisir
+ * ve surecin tekrar calismaya basladigini bildirir. */
 void child_sigcont_handler(int sig) {
     (void)sig; 
     signal(SIGCONT, child_sigcont_handler);
-    printf("Çocuk: İşlem yeniden başlatıldı\n");
+    printf("Çocuk: İşlem devam etti\n");
     fflush(stdout);
 }
 
-// EBEVEYN SÜRECİN SİNYAL HANDLER'I (Bütün işi yöneten yer)
+/* Ana surecin alarm handler'i her tetiklemede cocuk sureci once
+ * SIGSTOP ile durdurur, 2 saniye bekler ve SIGCONT ile devam ettirir.
+ * Ikinci alarmdan sonra SIGINT gonderip cocuk sureci sonlandirir. */
 void parent_sigalrm_handler(int sig) {
     (void)sig; 
-    signal(SIGALRM, parent_sigalrm_handler); // Alarm clock hatası yememek için alarmı tekrar kur
+    signal(SIGALRM, parent_sigalrm_handler);
     
     alarm_count++;
 
-    if (child_pid <= 0) return; // Çocuk henüz doğmadıysa bir şey yapma
+    if (child_pid <= 0) return;
 
-    // 1. ADIM: Çocuğu durdur
     printf("Ebeveyn: Çocuk durduruluyor...\n");
     fflush(stdout);
-    kill(child_pid, SIGSTOP); // SIGSTOP sinyali çocuğu dondurur
+    /* SIGSTOP islenemez; bu nedenle cocuk sureci dogrudan durdurur. */
+    kill(child_pid, SIGSTOP);
 
-    // 2. ADIM: Ebeveyn olarak 2 saniye kestiriyoruz (çocuk o sırada donuk kalıyor)
+    /* Odev isterine uygun olarak cocuk surec 2 saniye durdurulmus kalir. */
     sleep(2);
 
-    // 3. ADIM: Çocuğu kaldığı yerden devam ettir
-    printf("Ebeveyn: Çocuk devam ediyor...\n");
-    fflush(stdout);
-    kill(child_pid, SIGCONT); // SIGCONT çocuğu uykudan uyandırır
-
-    // 10 SANİYE KONTROLÜ
-    // Her alarm döngüsü: 3 saniye alarm + 2 saniye uyku = toplam 5 saniye sürüyor.
-    // Yani 2. alarm bittiğinde tam 10 saniye geçmiş oluyor.
     if (alarm_count < 2) {
-        alarm(3); // 10 saniye dolmadıysa sonraki 3 saniyelik alarmı kur
+        printf("Ebeveyn: Çocuk devam ediyor...\n");
+        fflush(stdout);
+        /* Cocuk surecin calismasina devam etmesi icin SIGCONT gonderilir. */
+        kill(child_pid, SIGCONT);
+        alarm(3);
     } else {
-        // 10 saniye doldu, artık bitirme vakti!
+        printf("Ebeveyn: Çocuk devam ediyor...\n");
+        fflush(stdout);
+        /* Son dongude de SIGCONT gonderilir, ardindan bitirme asamasina gecilir. */
+        kill(child_pid, SIGCONT);
+
         printf("Ebeveyn: SIGINT gönderiliyor...\n");
         fflush(stdout);
-        kill(child_pid, SIGINT); // Çocuğa önce uyarı amaçlı SIGINT gönderiyoruz
+        /* Cocuk surecin SIGINT handler'inin calistigini gostermek icin SIGINT gonderilir. */
+        kill(child_pid, SIGINT);
 
-        // Çocuk sinyali yakalayıp mesajı basabilsin ama döngüye girip yeni sayı 
-        // sayamasın diye arada 0.1 saniye (çok kısa) bekletiyoruz.
-        // POSIX-2008 standatlarında usleep yasak olduğu için nanosleep kullandım.
-        struct timespec req = {0, 100000000}; // 100 milyon nanosaniye = 0.1 saniye
+        /* POSIX-2008 uyumlu 0.1 saniyelik bekleme (usleep yerine) */
+        struct timespec req = {0, 100000000}; 
         nanosleep(&req, NULL);
 
-        // Çocuğun fişini kesin olarak çekiyoruz
+        /* Cocuk surec temiz bicimde beklenmeden once kesin olarak sonlandirilir. */
         kill(child_pid, SIGKILL);
-        waitpid(child_pid, NULL, 0); // İşletim sisteminde zombi (zombie) süreç kalmasın diye temizlik
+        waitpid(child_pid, NULL, 0);
 
         printf("Ebeveyn: Çocuk sonlandırıldı.\n");
         fflush(stdout);
-        exit(0); // Ebeveyni de kapatıp programı bitiriyoruz
+        exit(0);
     }
 }
 
 int main(void) {
     pid_t pid;
-    int counter = 0; // Çocuğun sayacağı sayı
+    int counter = 0;
 
-    // fork() ile süreci ikiye bölüyoruz
     pid = fork();
 
     if (pid < 0) {
@@ -94,29 +90,29 @@ int main(void) {
     }
 
     if (pid == 0) {
-        /* ---------- ÇOCUK SÜREÇ ---------- */
-        // Çocuk süreç kendi yakalayacağı sinyalleri burada tanımlıyor
+        /* ÇOCUK SÜREÇ */
+        /* Cocuk surec kendisine gelen SIGINT ve SIGCONT sinyallerini yakalar. */
         signal(SIGINT, child_sigint_handler);
         signal(SIGCONT, child_sigcont_handler);
 
-        // Sonsuz döngüde her saniye sayacı arttırıp yazdırıyor
+        /* Cocuk surec sonsuz dongude her saniye sayac degerini yazdirir. */
         while (1) {
             printf("Çocuk sayacı: %d\n", counter);
             fflush(stdout);
             counter++;
-            sleep(1); // 1 saniye uyu
+            sleep(1);
         }
         return 0;
     }
 
-    /* ---------- EBEVEYN SÜREÇ ---------- */
-    child_pid = pid; // Çocuğun ID'sini globale kaydet ki handler içerisinden kill yapabilelim
-    signal(SIGALRM, parent_sigalrm_handler); // Alarm çalınca ne yapacağını söyle
+    /* ANA SÜREÇ */
+    /* Ana surec cocugun PID degerini saklar ve SIGALRM icin handler kurar. */
+    child_pid = pid;
+    signal(SIGALRM, parent_sigalrm_handler);
 
-    alarm(3); // İlk fitili ateşliyoruz, 3 saniye sonra alarm çalacak
+    /* Ilk alarm 3 saniye sonra tetiklenir. Handler sonraki alarmi tekrar kurar. */
+    alarm(3);
 
-    // Ebeveyn süreç burada boş boş durup sinyal bekliyor.
-    // Buraya waitpid koyunca ilk alarmda bozuluyordu, o yüzden pause döngüsü en mantıklısı oldu.
     while (1) {
         pause(); 
     }
